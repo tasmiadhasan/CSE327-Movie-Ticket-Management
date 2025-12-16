@@ -1,0 +1,775 @@
+@startuml QuickShow Movie Ticket Management System
+
+skinparam backgroundColor #F8F9FA
+skinparam defaultFontSize 14
+skinparam defaultFontName Arial
+skinparam classFontStyle bold
+skinparam classFontSize 16
+skinparam classAttributeFontSize 13
+
+skinparam class {
+    BackgroundColor<<Model>> #4CAF50
+    FontColor<<Model>> #FFFFFF
+    BorderColor<<Model>> #2E7D32
+    BorderThickness<<Model>> 3
+    
+    BackgroundColor<<Controller>> #2196F3
+    FontColor<<Controller>> #FFFFFF
+    BorderColor<<Controller>> #1565C0
+    BorderThickness<<Controller>> 3
+    
+    BackgroundColor<<Component>> #FF9800
+    FontColor<<Component>> #FFFFFF
+    BorderColor<<Component>> #E65100
+    BorderThickness<<Component>> 3
+    
+    BackgroundColor<<Page>> #00BCD4
+    FontColor<<Page>> #FFFFFF
+    BorderColor<<Page>> #006064
+    BorderThickness<<Page>> 3
+    
+    BackgroundColor<<Admin>> #9C27B0
+    FontColor<<Admin>> #FFFFFF
+    BorderColor<<Admin>> #4A148C
+    BorderThickness<<Admin>> 3
+}
+
+skinparam packageStyle rectangle
+skinparam packageBackgroundColor #FFFFFF
+skinparam packageBorderColor #424242
+skinparam packageBorderThickness 2
+skinparam packageFontSize 18
+skinparam packageFontStyle bold
+
+skinparam arrow {
+    Thickness 2
+    Color #424242
+}
+
+left to right direction
+
+title <size:28><b>QuickShow Movie Ticket Management System</b></size>\n<size:18>System Architecture Overview</size>
+
+package "DATABASE\nMODELS" {
+    class User <<Model>> {
+        _id: String
+        name: String
+        email: String
+        image: String
+    }
+
+    class Movie <<Model>> {
+        _id: String
+        title: String
+        overview: String
+        poster_path: String
+        genres: Array
+        runtime: Number
+        vote_average: Number
+    }
+
+    class Theatre <<Model>> {
+        _id: String
+        name: String
+        city: String
+        amenities: Array
+    }
+
+    class Show <<Model>> {
+        _id: ObjectId
+        movie: String
+        theatre: String
+        showDateTime: Date
+        showPrice: Number
+        occupiedSeats: Object
+    }
+
+    class Booking <<Model>> {
+        _id: ObjectId
+        user: String
+        show: ObjectId
+        amount: Number
+        bookedSeats: Array
+        isPaid: Boolean
+    }
+
+    class Notify <<Model>> {
+        _id: ObjectId
+        userId: String
+        movieId: String
+    }
+}
+
+User "1" --> "N" Booking
+User "1" --> "N" Notify
+Movie "1" --> "N" Show
+Movie "1" --> "N" Notify
+Theatre "1" --> "N" Show
+Show "1" --> "N" Booking
+
+' ==================== CONTROLLERS ====================
+
+package "API CONTROLLERS" #E3F2FD {
+    
+    class UserController <<Controller>> {
+        **Methods:**
+        --
+        + getUserBookings(req, res): Promise
+        + updateFavorite(req, res): Promise
+        + getFavorites(req, res): Promise
+        + subscribeNotify(req, res): Promise
+        + unsubscribeNotify(req, res): Promise
+        --
+        **Uses Models:**
+        - User, Booking, Movie, Notify
+        --
+        **External Services:**
+        - Clerk (clerkClient)
+    }
+
+    class ShowController <<Controller>> {
+        **Methods:**
+        --
+        + getNowPlayingMovies(req, res): Promise
+        + getUpcomingMovies(req, res): Promise
+        + addShow(req, res): Promise
+        + getShows(req, res): Promise
+        + getShow(req, res): Promise
+        --
+        **Uses Models:**
+        - Movie, Show
+        --
+        **External Services:**
+        - TMDB API (axios)
+        - Inngest (event queue)
+    }
+
+    class BookingController <<Controller>> {
+        **Methods:**
+        --
+        + createBooking(req, res): Promise
+        + getOccupiedSeats(req, res): Promise
+        - checkSeatsAvailability(showId, seats): Promise
+        --
+        **Uses Models:**
+        - Booking, Show
+        --
+        **External Services:**
+        - Stripe Payment API
+        - Inngest (event queue)
+    }
+
+    class TheatreController <<Controller>> {
+        **Methods:**
+        --
+        + getTheatresWithUpcomingShows(req, res): Promise
+        + getMoviesRunningInTheatre(req, res): Promise
+        + getNowShowingAcrossTheatres(req, res): Promise
+        --
+        **Uses Models:**
+        - Theatre, Show, Movie
+    }
+
+    class AdminController <<Controller>> {
+        **Methods:**
+        --
+        + isAdmin(req, res): Promise
+        + getDashboardData(req, res): Promise
+        + getAllShows(req, res): Promise
+        + getAllBookings(req, res): Promise
+        --
+        **Uses Models:**
+        - Booking, Show, User
+        --
+        **Purpo.[#2196F3]up.> User : uses
+UserController .[#2196F3]up.> Booking : uses
+UserController .[#2196F3]up.> Movie : uses
+UserController .[#2196F3]up.> Notify : uses
+
+ShowController .[#2196F3]up.> Movie : uses
+ShowController .[#2196F3]up.> Show : uses
+
+BookingController .[#2196F3]up.> Booking : uses
+BookingController .[#2196F3]up.> Show : uses
+
+TheatreController .[#2196F3]up.> Theatre : uses
+TheatreController .[#2196F3]up.> Show : uses
+TheatreController .[#2196F3]up.> Movie : uses
+
+AdminController .[#2196F3]up.> Booking : uses
+AdminController .[#2196F3]up.> Show : uses
+AdminController .[#2196F3]up.-|> Movie : uses
+
+AdminController -up-|> Booking : uses
+AdminController -up-|> Show : uses
+AdminController -up-|> User : uses
+
+' ==================== CONTEXT ====================
+
+package "GLOBAL STATE MANAGEMENT" #FCE4EC {
+    
+    class AppContext <<Context>> {
+        **State Properties:**
+        --
+        - isAdmin: Boolean
+        - shows: Array
+        - favoriteMovies: Array
+        - image_base_url: String
+        - user: Object (from Clerk)
+        - axios: AxiosInstance
+        --
+        **Methods:**
+        --
+        + fetchIsAdmin(): Promise
+        + fetchShows(): Promise
+        + fetchFavoriteMovies(): Promise
+        + getToken(): Promise
+        + navigate(path): void
+        --
+        **Purpose:**
+        Provides global state to all
+        React components via Context API
+        --
+        **External Services:**
+        - Clerk (@clerk/clerk-react)
+        - React Router (useNavigate)
+    }
+}
+
+' ==================== MAIN APP ====================
+
+package "MAIN APPLICATION" #FFF9C4 {
+    
+    class App <<Component>> {
+        **Properties:**
+        --
+        - isAdminRoute: Boolean (computed)
+        - user: Object (from AppContext)
+        --
+        **Renders:**
+        --
+        • Navbar (if not admin route)
+        • Footer (if not admin route)
+        • Route Components
+        --
+        **Routes:**
+        / → Home
+        /movies → Movies
+        /movies/:id → MovieDetails
+        /movies/:id/:date → SeatLayout
+        /my-bookings → MyBookings
+        /theaters → Theaters
+        /theaters/:id → TheatreDetails
+        /releases → Releases
+        /favorite → Favorite
+        /admin/* → AdminLayout
+    }
+}
+
+AppContext -[#E91E63]down-> App : provides state
+
+' ==================== UI COMPONENTS ====================
+
+package "UI COMPONENTS" #FFF9C4 {
+    
+    class Navbar <<Component>> {
+        **State:**
+        --
+        - open: Boolean
+        - dropdownOpen: Boolean
+        - mobileMenuOpen: Boolean
+        --
+        **Methods:**
+        --
+        + toggleSearch(): void
+        + toggleDropdown(): void
+        + toggleMobileMenu(): void
+        --
+        **Features:**
+        - User authentication display
+        - Search functionality
+        - Navigation links
+        - Mobile responsive menu
+    }
+
+    class MovieCard <<Component>> {
+        **Props:**
+        --
+        + movie: Object
+        + showDate: String
+        --
+        **Methods:**
+        --
+        + handleCardClick(): void
+        --
+        **Purpose:**
+        Displays movie poster, title,
+        rating, and navigation
+    }
+
+    class SearchPanel <<Component>> {
+        **Props:**
+        --
+        + open: Boolean
+        + onClose: Function
+        --
+        **State:**
+        --
+        - searchQuery: String
+        - filteredMovies: Array
+        --
+        **Methods:**
+        --
+        + handleSearch(query): void
+        + handleMovieClick(movieId): void
+        --
+        **Purpose:**
+        Live movie search overlay
+    }
+
+    class DateSelect <<Component>> {
+        **Props:**
+        --
+        + dateTime: Object
+        + selectedDate: String
+        + selectedTime: Date
+        + onDateSelect(date): void
+        + onTimeSelect(time): void
+        --
+        **Purpose:**
+        Date and time slot selection
+        for movie showings
+    }
+
+    class HeroSection <<Component>> {
+        **State:**
+        --
+        - currentIndex: Number
+        - movies: Array
+        --
+        **Methods:**
+        --
+        + nextSlide(): void
+        + prevSlide(): void
+        + goToSlide(index): void
+        --
+        **Purpose:**
+        Homepage carousel banner
+        with featured movies
+    }
+
+    class FeaturedSection <<Component>> {
+        **State:**
+        --
+        - movies: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchMovies(): Promise
+        --
+        **Purpose:**
+        Display featured movies grid
+    }
+
+    class TrailerSection <<Component>> {
+        **State:**
+        --
+        - trailerOpen: Boolean
+        - selectedTrailer: Object
+        --
+        **Methods:**
+        --
+        + openTrailer(trailer): void
+        + closeTrailer(): void
+        --
+        **Purpose:**
+        Movie trailers showcase
+        with video player
+    }
+
+    class ReleaseCard <<Component>> {
+        **Props:**
+        --
+        + movie: Object
+        + onNotify: Function
+        --
+        **Purpose:**
+        Upcoming movie card with
+        notification subscription
+    }
+
+    class Footer <<Component>> {
+        **Purpose:**
+        Site footer with links
+    }
+
+    class Loading <<Component>> {
+        **Purpose:**
+        Loading spinner overlay
+    }
+
+    class BlurCircle <<Component>> {
+        **Purpose:**
+        Background decoration
+    }
+
+    class TrailerModal <<Component>> {
+        **Props:**
+        --
+        + open: Boolean
+        + trailer: Object
+        + onClose: Function
+        --
+        **Purpose:**
+        Modal for video playback
+    }
+}
+
+App -[#FFC107]down-> Navbar : renders
+AppContext -[#E91E63]down-> Navbar : provides state
+AppContext -[#E91E63]down-> MovieCard : provides state
+AppContext -[#E91E63]down-> SearchPanel : provides state
+
+' ==================== PAGE COMPONENTS ====================
+
+package "PAGE COMPONENTS" #E0F2F1 {
+    
+    class Home <<Page>> {
+        **Composition:**
+        --
+        • HeroSection
+        • FeaturedSection
+        • TrailerSection
+        --
+        **Purpose:**
+        Landing page with featured
+        content and trailers
+    }
+
+    class Movies <<Page>> {
+        **State:**
+        --
+        - movies: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchMovies(): Promise
+        --
+        **Purpose:**
+        Browse all now showing movies
+    }
+
+    class MovieDetails <<Page>> {
+        **State:**
+        --
+        - movie: Object
+        - dateTime: Object
+        - selectedDate: String
+        - selectedTime: Date
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchMovieData(): Promise
+        + handleDateSelect(date): void
+        + handleTimeSelect(time): void
+        + handleBookTicket(): void
+        + handleFavorite(): void
+        --
+        **Purpose:**
+        Movie information, showtimes,
+        and booking initiation
+    }
+
+    class SeatLayout <<Page>> {
+        **State:**
+        --
+        - show: Object
+        - selectedSeats: Array
+        - occupiedSeats: Array
+        - loading: Boolean
+        - isPaying: Boolean
+        --
+        **Methods:**
+        --
+        + fetchShowData(): Promise
+        + fetchOccupiedSeats(): Promise
+        + handleSeatClick(seat): void
+        + handleBooking(): Promise
+        --
+        **Purpose:**
+        Interactive seat selection
+        and booking confirmation
+    }
+
+    class MyBookings <<Page>> {
+        **State:**
+        --
+        - bookings: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchBookings(): Promise
+        --
+        **Purpose:**
+        User's booking history
+        and ticket information
+    }
+
+    class Theaters <<Page>> {
+        **State:**
+        --
+        - theatres: Array
+        - selectedCity: String
+        - searchQuery: String
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchTheatres(): Promise
+        + filterTheatres(): Array
+        + handleTheatreClick(id): void
+        --
+        **Purpose:**
+        Browse theaters and
+        their current movies
+    }
+
+    class TheatreDetails <<Page>> {
+        **State:**
+        --
+        - theatre: Object
+        - movies: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchTheatreMovies(): Promise
+        --
+        **Purpose:**
+        Theater info and
+        now showing movies
+    }
+
+    class Releases <<Page>> {
+        **State:**
+        --
+        - upcomingMovies: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchUpcomingMovies(): Promise
+        + handleNotify(movieId): Promise
+        --
+        **Purpose:**
+        Upcoming movies with
+        notification subscription
+    }
+
+    class Favorite <<Page>> {
+        **State:**
+        --
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchFavorites(): Promise
+        --
+        **Purpose:**
+        User's favorite movies list
+    }
+}
+
+App -[#FFC107]down-> Home : routes to
+App -[#FFC107]down-> Movies : routes to
+App -[#FFC107]down-> MovieDetails : routes to
+App -[#FFC107]down-> SeatLayout : routes to
+App -[#FFC107]down-> MyBookings : routes to
+App -[#FFC107]down-> Theaters : routes to
+App -[#FFC107]down-> TheatreDetails : routes to
+App -[#FFC107]down-> Releases : routes to
+App -[#FFC107]down-> Favorite : routes to
+
+Home *-[#009688]down- HeroSection
+Home *-[#009688]down- FeaturedSection
+Home *-[#009688]down- TrailerSection
+
+Movies *-[#009688]down- MovieCard
+MovieDetails *-[#009688]down- DateSelect
+MovieDetails *-[#009688]down- MovieCard
+Theaters *-[#009688]down- BlurCircle
+TheatreDetails *-[#009688]down- MovieCard
+Releases *-[#009688]down- ReleaseCard
+Favorite *-[#009688]down- MovieCard
+
+AppContext -[#E91E63]down-> Movies : provides state
+AppContext -[#E91E63]down-> MovieDetails : provides state
+AppContext -[#E91E63]down-> SeatLayout : provides state
+AppContext -[#E91E63]down-> MyBookings : provides state
+AppContext -[#E91E63]down-> Theaters : provides state
+AppContext -[#E91E63]down-> TheatreDetails : provides state
+AppContext -[#E91E63]down-> Releases : provides state
+AppContext -[#E91E63]down-> Favorite : provides state
+
+' ==================== ADMIN COMPONENTS ====================
+
+package "ADMIN PANEL" #F3E5F5 {
+    
+    class AdminLayout <<Admin>> {
+        **State:**
+        --
+        - sidebarOpen: Boolean
+        --
+        **Renders:**
+        --
+        • AdminNavbar
+        • AdminSidebar
+        • Outlet (nested routes)
+        --
+        **Purpose:**
+        Admin panel layout wrapper
+    }
+
+    class AdminNavbar <<Admin>> {
+        **Props:**
+        --
+        + toggleSidebar: Function
+        --
+        **Purpose:**
+        Admin header with
+        user controls
+    }
+
+    class AdminSidebar <<Admin>> {
+        **Props:**
+        --
+        + open: Boolean
+        + onClose: Function
+        --
+        **State:**
+        --
+        - activeLink: String
+        --
+        **Methods:**
+        --
+        + handleLinkClick(path): void
+        --
+        **Navigation:**
+        • Dashboard
+        • Add Shows
+        • List Shows
+        • List Bookings
+    }
+
+    class Dashboard <<Admin>> {
+        **State:**
+        --
+        - dashboardData: Object
+          • totalBookings: Number
+          • totalRevenue: Number
+          • totalUser: Number
+          • activeShows: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchDashboardData(): Promise
+        --
+        **Purpose:**
+        Admin dashboard with
+        statistics and metrics
+    }
+
+    class AddShows <<Admin>> {
+        **State:**
+        --
+        - searchQuery: String
+        - searchResults: Array
+        - selectedMovie: Object
+        - shows: Array (date/time)
+        - showPrice: Number
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + searchMovies(query): Promise
+        + handleMovieSelect(movie): void
+        + addShowDateTime(date, time): void
+        + removeShowDateTime(index): void
+        + handleSubmit(): Promise
+        --
+        **Purpose:**
+        Add new movie shows
+        with scheduling
+    }
+
+    class ListShows <<Admin>> {
+        **State:**
+        --
+        - shows: Array
+        - loading: Boolean
+        --
+        **Methods:**
+        --
+        + fetchAllShows(): Promise
+        --
+        **Purpose:**
+        View and manage all shows
+    }
+
+    class ListBookings <<Admin>> {
+        **State:**
+        --
+        - bookings: Array
+        - loading: Boolean
+        - filterStatus: String
+        --
+        **Methods:**
+        --
+        + fetchAllBookings(): Promise
+        + filterBookings(status): Array
+        --
+        **Purpose:**
+        View and manage all
+        user bookings
+    }
+
+    class Title <<Admin>> {
+        **Props:**
+        --
+        + text: String
+        --
+        **Purpose:**
+        Styled section title
+    }
+}
+
+App -[#FFC107]down-> AdminLayout : routes to
+AdminLayout *-[#9C27B0]down- AdminNavbar
+AdminLayout *-[#9C27B0]down- AdminSidebar
+AdminLayout -[#9C27B0]down-> Dashboard : routes to
+AdminLayout -[#9C27B0]down-> AddShows : routes to
+AdminLayout -[#9C27B0]down-> ListShows : routes to
+AdminLayout -[#9C27B0]down-> ListBookings : routes to
+
+AppContext -[#E91E63]down-> Dashboard : provides state
+AppContext -[#E91E63]down-> AddShows : provides state
+AppContext -[#E91E63]down-> ListShows : provides state
+AppContext -[#E91E63]down-> ListBookings : provides state
+
+' Add legend for better understanding
+legend right
+  |= Color |= Type |
+  | <#E1F5E1> | Database Models |
+  | <#E3F2FD> | API Controllers |
+  | <#FCE4EC> | Context/State |
+  | <#FFF9C4> | UI Components |
+  | <#E0F2F1> | Page Components |
+  | <#F3E5F5> | Admin Components |
+endlegend
+
+@enduml
